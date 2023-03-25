@@ -1,25 +1,28 @@
 package blockchain
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
+
+	"github.com/brahian-pena/simple-go-blockchain/utils"
 )
 
 type Block struct {
-	current_hash  string
-	previous_hash string
-	proof         int
-	index         int
-	timestamp     int64
-	data          string
+	PreviousHash string `json:"previous_hash"`
+	Proof        int    `json:"proof"`
+	Index        int    `json:"index"`
+	Timestamp    int64  `json:"timestamp"`
+	Data         string `json:"data"`
 }
 
 var blockchain []*Block
+
+const ACCEPTANCE_CRITERIA = "0000"
 
 func InitBlockchain() {
 	println("Initializing blockchain")
@@ -30,11 +33,11 @@ func InitBlockchain() {
 func CreateBlock(proof int, previous_hash string, data string) (b *Block) {
 
 	block := &Block{
-		previous_hash: previous_hash,
-		index:         len(blockchain) + 1,
-		timestamp:     time.Now().Unix(),
-		proof:         proof,
-		data:          data,
+		PreviousHash: previous_hash,
+		Index:        len(blockchain) + 1,
+		Timestamp:    time.Now().Unix(),
+		Proof:        proof,
+		Data:         data,
 	}
 
 	blockchain = append(blockchain, block)
@@ -51,26 +54,67 @@ func CreateHash(bytes_to_hash []byte) string {
 
 	hasher.Write(bytes_to_hash)
 
-	hash := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	hash := hex.EncodeToString(hasher.Sum(nil))
 
 	return hash
 }
 
-func ProofOfWork(previous_proof int) {
+func ProofOfWork(previous_proof int) int {
 	new_proof := 1
 
 	check_proof := false
 
 	for !check_proof {
-		hash_operation := CreateHash(float64ToByte(math.Pow(float64(new_proof), 2) - math.Pow(float64(previous_proof), 2)))
+		hash_operation := CreateHash(utils.Float64ToByte(math.Pow(float64(new_proof), 2) - math.Pow(float64(previous_proof), 2)))
+
+		if strings.HasPrefix(hash_operation, ACCEPTANCE_CRITERIA) {
+			check_proof = true
+		} else {
+			new_proof++
+		}
 	}
+
+	return new_proof
 }
 
-func float64ToByte(f float64) []byte {
-	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.BigEndian, f)
+func HashBlock(block *Block) string {
+	encoded_block, err := json.Marshal(block)
 	if err != nil {
-		fmt.Println("binary.Write failed:", err)
+		fmt.Println(err)
+		return ""
 	}
-	return buf.Bytes()
+
+	var hash = CreateHash(encoded_block)
+
+	return hash
+}
+
+func IsBlockchainValid() bool {
+	previous_block := blockchain[0]
+
+	block_index := 1
+
+	for block_index < len(blockchain) {
+		current_block := blockchain[block_index]
+
+		if current_block.PreviousHash != HashBlock(previous_block) {
+			return false
+		}
+
+		hash := CreateHash(utils.Float64ToByte(math.Pow(float64(current_block.Proof), 2) - math.Pow(float64(previous_block.Proof), 2)))
+
+		if !strings.HasPrefix(hash, ACCEPTANCE_CRITERIA) {
+			return false
+		}
+
+		previous_block = current_block
+
+		block_index++
+	}
+
+	return true
+}
+
+func GetBlockChain() []*Block {
+	return blockchain
 }
